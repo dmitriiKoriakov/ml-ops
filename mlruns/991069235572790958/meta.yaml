@@ -1,0 +1,6 @@
+artifact_location: file:///Users/iliana/PycharmProjects/MLops/mlruns/991069235572790958
+creation_time: 1747792983628
+experiment_id: '991069235572790958'
+last_update_time: 1747792983628
+lifecycle_stage: active
+name: langchain_traces

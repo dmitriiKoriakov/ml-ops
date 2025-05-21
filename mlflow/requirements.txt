@@ -1,0 +1,6 @@
+cryptography==44.0.2
+boto3==1.37.20
+mlflow==2.21.1  # Includes MLflow client for tracking and model registry
+#pymysql==1.1.1
+psycopg2-binary
+mlflow[client]  # Explicitly include MLflow client dependencies

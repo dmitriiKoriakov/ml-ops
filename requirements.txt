@@ -1,0 +1,7 @@
+langchain==0.3.25
+langgraph
+mlflow
+langchain-community
+dotenv
+langchain-openai
+boto3==1.37.20
