@@ -9,5 +9,5 @@ fastapi
 uvicorn
 pytest
 pytest-cov
-pytest-mlflow
+#pytest-mlflow
 httpx
