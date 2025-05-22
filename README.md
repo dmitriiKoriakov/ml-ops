@@ -1,75 +1,118 @@
-# MLflow On-Premise Deployment using Docker Compose
-Easily deploy an MLflow tracking server with 1 command.
+# Проект MLOps
 
-MinIO S3 is used as the artifact store and MySQL server is used as the backend store.
+Этот репозиторий содержит проект по машинному обучению и MLOps, который демонстрирует интеграцию различных инструментов и технологий для построения, деплоя и мониторинга ML-приложений.
 
-## How to run
+## Содержание
 
-1. Clone (download) this repository
+- [Terraform S3 Manifest для Яндекс Облака](#terraform-s3-manifest-для-яндекс-облака)
+- [Настройка сервера MLFlow](#настройка-сервера-mlflow)
+- [CI/CD Pipeline с интеграцией MLFlow](#cicd-pipeline-с-интеграцией-mlflow)
 
-    ```bash
-    git clone https://github.com/sachua/mlflow-docker-compose.git
-    ```
+## Terraform S3 Manifest для Яндекс Облака
 
-2. `cd` into the `mlflow-docker-compose` directory
+В проекте есть Terraform-манифест, который создаёт S3-совместимый storage bucket в Яндекс Облаке. Конфигурация Terraform разделена на несколько файлов для удобства поддержки и разделения ответственности:
 
-3. Build and run the containers with `docker-compose`
+### Структура файлов
 
-    ```bash
-    docker compose up -d --build
-    ```
+- **manifest.tf**: Основные ресурсы для создания S3 bucket:
+  - Сервисный аккаунт с ролью storage.editor
+  - Статические access-ключи для сервисного аккаунта
+  - Генератор случайных ID для уникальных имён bucket-ов
+  - S3-совместимый storage bucket с приватным доступом
 
-4. Access MLflow UI with http://localhost:5000
+- **providers.tf**: Настройка Yandex Cloud провайдера:
+  - Указание версии провайдера
+  - Конфигурирование через переменные
 
-5. Access MinIO UI with http://localhost:9000
+- **variables.tf**: Описание переменных:
+  - `yc_iam_token`: IAM токен для аутентификации в Яндекс Облаке (чувствительный)
+  - `yc_cloud_id`: Cloud ID в Яндекс Облаке
+  - `yc_folder_id`: Folder ID в Яндекс Облаке
 
-## Containerization
+### Ключевые особенности
 
-The MLflow tracking server is composed of 3 docker containers:
+- **Модульная структура**: Конфиг разделён на отдельные файлы для ресурсов, провайдеров и переменных — это упрощает поддержку.
+- **Безопасность**: Чувствительные данные, такие как токены, помечены как sensitive и не выводятся в логах.
+- **Уникальные имена**: Используются random id для генерации уникальных имён bucket-ов.
+- **Контроль доступа**: Bucket создаётся с приватным ACL для безопасности.
 
-* MLflow server
-* MinIO object storage server
-* MySQL database server
+## Настройка сервера MLFlow
 
-## Example
+Проект включает полноценную настройку MLFlow server для трекинга экспериментов, реестра моделей и мониторинга метрик.
 
-1. Install [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html)
+### Компоненты
 
-2. Install MLflow with extra dependencies, including scikit-learn
+- **MLFlow сервер**: Контейнеризированный MLFlow сервер:
+  - PostgreSQL для хранения метаданных
+  - S3-совместимое хранилище (MinIO) для артефактов
+  - Кастомный Docker-образ на базе `mlflow/Dockerfile`
 
-    ```bash
-    pip install mlflow boto3
-    ```
+- **Интеграция с приложением**: Приложение FastAPI настроено для работы с MLFlow:
+  - Трекинг экспериментов
+  - Логирование метрик
+  - Сервинг моделей
 
-3. Set environmental variables
+### Docker Compose
 
-    ```bash
-    export MLFLOW_TRACKING_URI=http://localhost:5000
-    export MLFLOW_S3_ENDPOINT_URL=http://localhost:9000
-    ```
-4. Set MinIO credentials
+Файл `docker-compose.yml` управляет всей инфраструктурой MLFlow:
 
-    ```bash
-    cat <<EOF > ~/.aws/credentials
-    [default]
-    aws_access_key_id=minio
-    aws_secret_access_key=minio123
-    EOF
-    ```
+- **MinIO**: S3-совместимое хранилище для артефактов
+- **PostgreSQL**: База данных для MLFlow метаданных
+- **MLFlow Server**: Основной сервер
+- **API Service**: Приложение FastAPI, интегрированное с MLFlow
 
-5. Train a sample MLflow model
+![photo_2025-05-22_03-25-31.jpg](docs/photo_2025-05-22_03-25-31.jpg)
+![photo_2025-05-22_03-25-33.jpg](docs/photo_2025-05-22_03-25-33.jpg)
+![photo_2025-05-22_03-25-35.jpg](docs/photo_2025-05-22_03-25-35.jpg)
+![photo_2025-05-22_03-25-38.jpg](docs/photo_2025-05-22_03-25-38.jpg)
 
-    ```bash
-    mlflow run https://github.com/sachua/mlflow-example.git -P alpha=0.42
-    ```
+### Преимущества MLFlow
 
- 6. Serve the model (replace ${MODEL_ID} with your model's ID)
-    ```bash
-    export MODEL_ID=0ced24069348417fbbcb2cd41a7d2f07 # Replace this with your model's ID
-    mlflow models serve -m runs:/${MODEL_ID}/model -p 1234 --env-manager conda
-    ```
+1. **Трекинг экспериментов**: MLFlow автоматически отслеживает параметры, метрики и артефакты — удобно сравнивать разные модели и запуски.
+2. **Реестр моделей**: Централизованный реестр с поддержкой версионности и стадий (development, staging, production).
+3. **Воспроизводимость**: Все параметры и зависимости сохраняются, обеспечивая воспроизводимость.
+4. **Визуализация метрик**: UI MLFlow позволяет анализировать метрики моделей.
+5. **Интеграция с CI/CD**: Как видно в GitHub Actions, MLFlow интегрирован в пайплайн для трекинга тестов и производительности.
+6. **Масштабируемость**: Использование PostgreSQL и S3 позволяет масштабировать проект.
 
- 7. You can check the input with this command
-    ```bash
-    curl -X POST -H "Content-Type:application/json" --data '{"dataframe_split":{"columns":["fixed acidity", "volatile acidity", "citric acid", "residual sugar", "chlorides", "free sulfur dioxide", "total sulfur dioxide", "density", "pH", "sulphates", "alcohol"],"data":[[6.2, 0.66, 0.48, 1.2, 0.029, 29, 75, 0.98, 3.33, 0.39, 12.8]]}}' http://127.0.0.1:1234/invocations
-    ```
+## CI/CD Pipeline с интеграцией MLFlow
+
+В проекте настроен GitHub Actions workflow, реализующий CI/CD pipeline с MLFlow.
+
+### Этапы пайплайна
+
+1. **Test**: Запуск юнит-тестов с покрытием
+2. **MLFlow Metrics**: Расчёт и логирование метрик в MLFlow
+3. **Build and Deploy**: Сборка и публикация Docker-образа в GitHub Container Registry
+
+### Интеграция MLFlow в CI/CD
+
+В задаче `mlflow-metrics` (GitHub Actions):
+
+- Создаётся MLFlow эксперимент "api_service_metrics"
+- Запускаются тесты и логируются такие метрики как:
+  - Количество запущенных тестов
+  - Количество прошедших тестов
+  - Количество проваленных тестов
+  - Количество тестов с ошибками
+  - Процент успешных тестов
+
+Это позволяет отслеживать динамику тестирования и вовремя выявлять регрессии.
+
+### Локальное тестирование
+
+Для локального запуска есть скрипт `test_local.sh`, чтобы запускать те же тесты и логи метрик локально, как и в CI/CD.
+
+![photo_2025-05-22_03-25-22.jpg](docs/photo_2025-05-22_03-25-22.jpg)
+![photo_2025-05-22_03-25-24.jpg](docs/photo_2025-05-22_03-25-24.jpg)
+![photo_2025-05-22_03-25-26.jpg](docs/photo_2025-05-22_03-25-26.jpg)
+
+## Заключение
+
+Этот проект — пример полного MLOps цикла с:
+
+- Infrastructure as Code через Terraform для S3-хранилища
+- Трекинг экспериментов и моделей через MLFlow
+- CI/CD pipeline с трекингом метрик
+
+Комбинация этих инструментов создаёт надёжную инфраструктуру для разработки, деплоя и мониторинга ML-приложений.
