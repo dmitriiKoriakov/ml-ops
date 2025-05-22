@@ -5,3 +5,9 @@ langchain-community
 dotenv
 langchain-openai
 boto3==1.37.20
+fastapi
+uvicorn
+pytest
+pytest-cov
+pytest-mlflow
+httpx

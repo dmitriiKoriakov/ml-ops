@@ -1,0 +1,141 @@
+name: API CI/CD
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'app.py'
+      - 'chat_agent.py'
+      - 'chat_agent_tool.py'
+      - 'langchain_agent.py'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - 'test_app.py'
+      - '.github/workflows/api-ci-cd.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'app.py'
+      - 'chat_agent.py'
+      - 'chat_agent_tool.py'
+      - 'langchain_agent.py'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - 'test_app.py'
+      - '.github/workflows/api-ci-cd.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install fastapi uvicorn pytest pytest-cov
+          
+      - name: Run tests with coverage
+        run: |
+          pytest test_app.py --cov=. --cov-report=xml
+          
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          fail_ci_if_error: true
+
+  mlflow-metrics:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install fastapi uvicorn pytest pytest-mlflow
+          
+      - name: Calculate MLflow metrics
+        run: |
+          # Create a script to calculate metrics
+          cat > calculate_metrics.py << 'EOF'
+          import mlflow
+          import pytest
+          import unittest
+          from unittest.mock import patch, MagicMock
+          from fastapi.testclient import TestClient
+          from app import app
+          
+          # Set up MLflow experiment
+          mlflow.set_experiment("api_service_metrics")
+          
+          # Run a test with MLflow tracking
+          with mlflow.start_run(run_name="api_service_test"):
+              # Log parameters
+              mlflow.log_param("test_type", "unit_test")
+              
+              # Run tests and collect metrics
+              test_loader = unittest.TestLoader()
+              test_suite = test_loader.loadTestsFromName('test_app.TestApp')
+              test_result = unittest.TextTestRunner().run(test_suite)
+              
+              # Log metrics
+              mlflow.log_metric("tests_run", test_result.testsRun)
+              mlflow.log_metric("tests_passed", test_result.testsRun - len(test_result.errors) - len(test_result.failures))
+              mlflow.log_metric("tests_failed", len(test_result.failures))
+              mlflow.log_metric("tests_errored", len(test_result.errors))
+              
+              # Calculate and log success rate
+              success_rate = (test_result.testsRun - len(test_result.errors) - len(test_result.failures)) / test_result.testsRun * 100
+              mlflow.log_metric("success_rate", success_rate)
+              
+              print(f"Tests run: {test_result.testsRun}")
+              print(f"Tests passed: {test_result.testsRun - len(test_result.errors) - len(test_result.failures)}")
+              print(f"Tests failed: {len(test_result.failures)}")
+              print(f"Tests errored: {len(test_result.errors)}")
+              print(f"Success rate: {success_rate}%")
+          EOF
+          
+          # Run the script
+          python calculate_metrics.py
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [test, mlflow-metrics]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Build and push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/api:latest
+            ghcr.io/${{ github.repository }}/api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
